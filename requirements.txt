@@ -1,0 +1,37 @@
+# Core ML & Embeddings
+sentence-transformers==5.4.0   # Free HuggingFace embeddings (runs on CPU/MPS)
+transformers==5.5.3            # HuggingFace transformer models
+torch==2.11.0                  # PyTorch — M-series uses MPS backend automatically
+
+# LangChain Ecosystem 
+langchain==1.2.15              # Main orchestration framework
+langchain-community==0.4.1     # Community integrations (FAISS, HuggingFace, etc.)
+langchain-huggingface==1.2.1   # LangChain ↔ HuggingFace embeddings bridge
+langgraph==1.1.6               # Multi-agent graph orchestration
+langsmith==0.1.147             # Tracing and evaluation for LangChain apps
+
+# Vector Store
+faiss-cpu==1.13.2              # Fast local vector search (no GPU needed)
+
+# PDF Processing
+pymupdf==1.27.2.2              # Fast PDF text + page metadata extraction
+
+# LLM (Free, Local)
+ctransformers==0.2.27          # Run GGUF quantised LLMs locally on CPU/MPS
+huggingface-hub==1.10.1        # Download models from HuggingFace Hub
+
+# Data Handling
+pandas==3.0.2                  # DataFrame operations for JSONL dataset
+numpy==2.4.4                   # Numerical ops
+
+# Frontend
+gradio==6.12.0                 # Fast, HuggingFace-deployable UI
+
+# Evaluation 
+rouge-score==0.1.2             # ROUGE metric for answer quality
+rank-bm25==0.2.2               # BM25 keyword retrieval
+
+# Utilities
+python-dotenv==1.2.2           # Load env variables from .env
+tqdm==4.67.3                   # Progress bars
+pydantic==2.12.5               # Data validation / typed state
