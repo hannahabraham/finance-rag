@@ -1,6 +1,6 @@
 """
-Loads the teo FinanceBench JSONL files and merges them into asingle DataFrame.
-Also builds a doc_info_map used by thePDF loader to attach ricj metadata to pages.
+Loads the two FinanceBench JSONL files and merges them into a single DataFrame.
+Also builds a doc_info_map used by the PDF loader to attach rich metadata to pages.
 """
 
 import json

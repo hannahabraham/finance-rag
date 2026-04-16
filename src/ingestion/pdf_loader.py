@@ -141,6 +141,16 @@ def load_all_pdfs(
     return all_pages
 
 
+_DOC_TYPE_MAP = {
+    "10K": "10-K",
+    "10-K": "10-K",
+    "10Q": "10-Q",
+    "10-Q": "10-Q",
+    "8K": "8-K",
+    "8-K": "8-K",
+}
+
+
 def _infer_metadata_from_filename(filename: str) -> dict:
     """
     Best-effort metadata extraction when no JSONL metadata is available.
@@ -150,8 +160,6 @@ def _infer_metadata_from_filename(filename: str) -> dict:
     company = parts[0] if parts else filename
     # look for a 4-digit year in the filename parts
     period = next((p for p in parts if p.isdigit() and len(p) == 4), "")
-    # look for doc type like 10K, 10Q
-    doc_type = next(
-        (p.replace("10K", "10-K").replace("10Q", "10-Q") for p in parts if "10" in p), ""
-    )
+    # exact-match doc type tokens only — avoids matching years like "2010"
+    doc_type = next((_DOC_TYPE_MAP[p] for p in parts if p in _DOC_TYPE_MAP), "")
     return {"company": company.title(), "doc_type": doc_type, "doc_period": period}

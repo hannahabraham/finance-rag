@@ -58,6 +58,7 @@ def baseline_answer(question: str, retriever_fn: Callable) -> dict:
             "sources": [],
             "confidence": "Low",
             "method": "baseline",
+            "retrieved_chunks": [],
         }
 
     # Step 2: build prompt and generate
@@ -78,4 +79,5 @@ def baseline_answer(question: str, retriever_fn: Callable) -> dict:
         "sources": sources,
         "confidence": "Medium",
         "method": "baseline",
+        "retrieved_chunks": chunks,
     }

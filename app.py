@@ -1,27 +1,42 @@
 """
 app.py
 ------
-Entry point for HuggingFace Spaces deployment.
-HuggingFace Spaces looks for app.py in the repo root.
-This file simply imports and launches the Gradio app.
+Entry point for the Financial Research Assistant.
 
-For local development, run:
+Starts the FastAPI server that serves both the REST/SSE API and the
+built React frontend from `frontend/dist`.
+
+For local development:
+    # Terminal 1: API server
     python app.py
-    # or
-    python -m src.app.gradio_app
+
+    # Terminal 2: React dev server (hot reload)
+    cd frontend && npm run dev
 """
 
 import sys
 from pathlib import Path
 
-# Ensure the project root is on the Python path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.app.gradio_app import build_ui
-
-demo = build_ui()
-
-# launch() with no arguments uses HuggingFace Spaces defaults
-# (server_name and port are set by the Spaces environment)
 if __name__ == "__main__":
-    demo.launch()
+    import uvicorn
+    from src.config import settings
+
+    dist = Path(__file__).parent / "frontend" / "dist"
+    if not dist.exists():
+        print("Frontend not built yet. Run:")
+        print("  cd frontend && npm install && npm run build")
+        print()
+        print("Or for development with hot reload:")
+        print("  cd frontend && npm run dev")
+        print()
+        print("Starting API server anyway (API available at /api/ask) ...")
+        print()
+
+    uvicorn.run(
+        "src.app.server:app",
+        host="0.0.0.0",
+        port=settings.APP_PORT,
+        reload=False,
+    )

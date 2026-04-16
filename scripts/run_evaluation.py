@@ -22,12 +22,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from langsmith import Client
-
 from src.config import settings
 from src.ingestion.dataset_loader import build_merged_df
 from src.retrieval.embedder import get_embedding_model
-from src.retrieval.vector_store import load_vector_store
+from src.retrieval.vector_store import load_vector_store, get_all_documents
 from src.retrieval.retriever import dense_retrieve, BM25Index, hybrid_retrieve
 from src.evaluation.metrics import retrieval_eval, answer_eval, grounding_eval, evaluate_batch
 from src.app.baseline_rag import baseline_answer
@@ -86,13 +84,16 @@ def evaluate_single(
         if pipeline_mode == "baseline":
             result = baseline_answer(question, retriever_fn)
             generated_answer = result.get("answer", "")
-            retrieved_chunks = retriever_fn(query=question)
+            retrieved_chunks = result.get("retrieved_chunks", [])
             evidence_chunks = retrieved_chunks[:5]
         else:
             result = run_pipeline(graph_app, question)
             generated_answer = result.get("answer", "")
-            evidence_chunks = result.get("evidence_snippets", [])
-            retrieved_chunks = evidence_chunks  # use verified chunks for retrieval eval
+            # Use full (non-truncated) chunks exposed by the pipeline:
+            # retrieved_chunks → retrieval_eval (was the correct doc fetched?)
+            # verified_chunks  → grounding_eval (is the answer supported?)
+            retrieved_chunks = result.get("retrieved_chunks", [])
+            evidence_chunks = result.get("verified_chunks", [])
     except Exception as exc:
         logger.warning(f"Pipeline error for '{question[:60]}': {exc}")
         return {"question": question, "error": str(exc)}
@@ -139,12 +140,8 @@ def main(limit: int, pipeline_mode: str, retrieval_mode: str):
     embeddings = get_embedding_model()
     vector_store = load_vector_store(embeddings)
 
-    # Build BM25 corpus from FAISS docstore
-    all_docs = [
-        {"text": doc.page_content, **doc.metadata}
-        for doc in vector_store.docstore._dict.values()
-    ]
-    bm25_index = BM25Index(all_docs)
+    # Build BM25 corpus from FAISS docstore via the public helper
+    bm25_index = BM25Index(get_all_documents(vector_store))
     retriever_fn = build_retriever(vector_store, bm25_index, retrieval_mode)
 
     # ── Build graph (only for multi-agent mode) ───────────────────────────────

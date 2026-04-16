@@ -148,14 +148,16 @@ Use 1-indexed positions matching the chunk numbers above. Only include clearly r
     response = generate(prompt, max_tokens=256)
     parsed = _extract_json_from_response(response)
 
-    relevant_indices = parsed.get("relevant_indices", list(range(1, len(chunks) + 1)))
+    # The LLM only saw the first 8 chunks, so valid indices are bounded by that
+    max_shown = min(8, len(chunks))
+    relevant_indices = parsed.get("relevant_indices", list(range(1, max_shown + 1)))
 
-    # Convert to 0-indexed and select only relevant chunks
-    verified = [chunks[i - 1] for i in relevant_indices if 1 <= i <= len(chunks)]
+    # Convert to 0-indexed and select only indices the LLM actually saw
+    verified = [chunks[i - 1] for i in relevant_indices if 1 <= i <= max_shown]
 
-    # Fallback: if LLM returned nothing, keep all chunks
+    # Fallback: if LLM returned nothing usable, keep the chunks we showed it
     if not verified:
-        verified = chunks
+        verified = chunks[:max_shown]
 
     logger.info(f"Evidence verification: {len(chunks)} → {len(verified)} chunks")
     return {"verified_chunks": verified}
@@ -197,12 +199,20 @@ Respond with JSON only:
     response = generate(prompt, max_tokens=512)
     parsed = _extract_json_from_response(response)
 
+    # Derive sources directly from verified chunks to prevent the LLM from
+    # hallucinating document names or page numbers. The LLM-authored sources
+    # field is ignored on purpose.
+    derived_sources = [
+        {"doc_name": c.get("doc_name", ""), "page_number": c.get("page_number", 0)}
+        for c in chunks[:3]
+    ]
+
     # Defensive defaults if LLM fails to produce valid JSON
     return {
         "answer": parsed.get("answer", "Could not generate answer."),
         "explanation": parsed.get("explanation", ""),
         "confidence": parsed.get("confidence", "Low"),
-        "sources": parsed.get("sources", []),
+        "sources": derived_sources,
     }
 
 
@@ -222,7 +232,10 @@ def critic_node(state: RAGState) -> dict:
     retry_count = state.get("retry_count", 0) or 0
     if retry_count >= MAX_RETRIES:
         logger.warning("Max retries reached — accepting current answer")
-        return {"needs_retry": False, "critique": "Max retries reached.", "final_output": _build_final_output(state)}
+        updates = {"needs_retry": False, "critique": "Max retries reached."}
+        # Merge our own updates into state so final_output captures critique
+        updates["final_output"] = _build_final_output({**state, **updates})
+        return updates
 
     question = state.get("parsed_question") or state["question"]
     answer = state.get("answer", "")
@@ -254,17 +267,19 @@ Respond with JSON only:
 
     logger.info(f"Critic verdict: {verdict} | issues: {parsed.get('issues', '')}")
 
-    result = {
+    updates = {
         "critique": parsed.get("issues", ""),
         "needs_retry": needs_retry,
         "retry_count": retry_count + (1 if needs_retry else 0),
     }
 
-    # If accepted, assemble the final structured output
+    # If accepted, assemble the final structured output.
+    # Merge updates into state first so critique appears in final_output
+    # (LangGraph merges the return dict only AFTER the node returns).
     if not needs_retry:
-        result["final_output"] = _build_final_output(state)
+        updates["final_output"] = _build_final_output({**state, **updates})
 
-    return result
+    return updates
 
 
 # Final output assembler
@@ -283,14 +298,19 @@ def _build_final_output(state: RAGState) -> dict:
             seen.add(key)
             unique_sources.append(src)
 
-    # Build evidence snippets list
+    verified_chunks_full = state.get("verified_chunks") or []
+    retrieved_chunks_full = state.get("retrieved_chunks") or []
+
+    # Build display-only evidence snippets (truncated for UI readability).
+    # verified_chunks_full and retrieved_chunks_full remain untruncated for
+    # downstream evaluation (grounding / retrieval metrics).
     evidence_snippets = [
         {
-            "text": c.get("text", "")[:300] + "…",
+            "text": (c.get("text", "")[:300] + "…") if len(c.get("text", "")) > 300 else c.get("text", ""),
             "doc_name": c.get("doc_name", ""),
             "page_number": c.get("page_number", ""),
         }
-        for c in (state.get("verified_chunks") or [])[:3]
+        for c in verified_chunks_full[:3]
     ]
 
     return {
@@ -301,5 +321,7 @@ def _build_final_output(state: RAGState) -> dict:
         "confidence": state.get("confidence", "Low"),
         "sources": unique_sources,
         "evidence_snippets": evidence_snippets,
+        "verified_chunks": verified_chunks_full,
+        "retrieved_chunks": retrieved_chunks_full,
         "critique": state.get("critique", ""),
     }

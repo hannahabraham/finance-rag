@@ -95,3 +95,18 @@ def vector_store_exists(path: Path | None = None) -> bool:
     path = Path(path or settings.VECTOR_STORE_PATH)
     # LangChain saves index.faiss and index.pkl
     return (path / "index.faiss").exists()
+
+
+def get_all_documents(vector_store: FAISS) -> list[dict]:
+    """
+    Extract every stored document (text + metadata) from a FAISS vector store.
+    Used to build an auxiliary BM25 index over the same corpus.
+
+    LangChain's FAISS wrapper does not expose a public iteration API, so we
+    rely on the internal docstore dict. Centralising the access here means
+    only one call-site to update if LangChain changes the internal layout.
+    """
+    return [
+        {"text": doc.page_content, **(doc.metadata or {})}
+        for doc in vector_store.docstore._dict.values()
+    ]

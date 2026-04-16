@@ -89,10 +89,11 @@ Financial answers need to be grounded. The critic checks whether the answer is a
 | Embeddings | sentence-transformers (all-MiniLM-L6-v2) | Free, runs locally, no API key |
 | Vector search | FAISS | Fast in-memory search, Apple MPS supported |
 | Keyword search | rank-bm25 | Exact term matching for financial figures |
-| Language model | Mistral-7B GGUF via ctransformers | 4-bit quantised, runs on 8 GB RAM |
+| Language model | Mistral-7B GGUF via llama-cpp-python | 4-bit quantised, runs on 8 GB RAM, Metal-accelerated on Apple Silicon |
 | Agent framework | LangGraph | Typed shared state, conditional routing |
 | PDF extraction | PyMuPDF | Page-accurate text with metadata |
-| Frontend | Gradio | One-command deploy to HuggingFace Spaces |
+| Backend API | FastAPI + Uvicorn | Streaming SSE endpoint for real-time pipeline progress |
+| Frontend | React + TypeScript + Tailwind | Professional UI with step-by-step pipeline visualisation |
 | Evaluation | rouge-score | Standard metric, no external API needed |
 | Dataset | FinanceBench | 150 annotated Q&A pairs over real SEC filings |
 
@@ -102,10 +103,23 @@ Financial answers need to be grounded. The critic checks whether the answer is a
 
 ```
 finance-rag/
-├── app.py                          HuggingFace Spaces entry point
-├── Dockerfile
+├── app.py                          FastAPI entry point (uvicorn)
 ├── requirements.txt
-├── .env.example
+│
+├── frontend/                       React + TypeScript + Tailwind SPA
+│   ├── package.json
+│   ├── vite.config.ts              Dev proxy → FastAPI :7860
+│   ├── src/
+│   │   ├── App.tsx                 Root component + pipeline state machine
+│   │   ├── lib/api.ts              SSE streaming client
+│   │   ├── types.ts                Shared TypeScript types
+│   │   └── components/
+│   │       ├── Header.tsx
+│   │       ├── QuestionForm.tsx    Mode + retrieval selectors
+│   │       ├── PipelineTracker.tsx Horizontal stepper + step cards
+│   │       ├── StepCard.tsx        Per-agent detail panel
+│   │       └── AnswerCard.tsx      Final answer + sources + evidence
+│   └── dist/                       Built assets (served by FastAPI)
 │
 ├── src/
 │   ├── config.py                   All settings loaded from .env
@@ -119,13 +133,14 @@ finance-rag/
 │   │   └── retriever.py            Dense, BM25, and hybrid retrieval
 │   ├── agents/
 │   │   ├── state.py                Shared TypedDict state for LangGraph
-│   │   ├── llm.py                  Local GGUF LLM loader
+│   │   ├── llm.py                  Local GGUF LLM loader (llama-cpp-python)
 │   │   ├── nodes.py                Five agent node functions
 │   │   └── graph.py                LangGraph assembly and run_pipeline()
 │   ├── evaluation/
 │   │   └── metrics.py              Retrieval, answer, and grounding metrics
 │   └── app/
-│       ├── gradio_app.py           Gradio web interface
+│       ├── server.py               FastAPI server (API + SPA static files)
+│       ├── pipeline_service.py     Streaming SSE wrapper for the pipeline
 │       └── baseline_rag.py         Single-chain baseline for comparison
 │
 ├── scripts/
@@ -157,65 +172,47 @@ Six experiments compare baseline single-chain RAG against multi-agent RAG across
 
 ## Quickstart
 
-**Requirements:** Python 3.11+, 8 GB RAM minimum, ~6 GB disk space
+**Requirements:** Python 3.11+, Node.js 18+, 8 GB RAM minimum, ~6 GB disk space
 
 ```bash
-# 1. Clone and install
+# 1. Clone and install (Python)
 git clone https://github.com/YOUR_USERNAME/finance-rag.git
 cd finance-rag
 python3.11 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
 
-# 2. Get the dataset
+# 2. Build the React frontend
+cd frontend && npm install && npm run build && cd ..
+
+# 3. Get the dataset
 git clone https://github.com/patronus-ai/financebench.git /tmp/financebench
 mkdir -p data/pdfs
 cp /tmp/financebench/data/*.jsonl data/
 cp /tmp/financebench/pdfs/*.pdf data/pdfs/
 
-# 3. Download the LLM (~4 GB, one time)
+# 4. Download the LLM (~4 GB, one time)
 python scripts/download_model.py
 
-# 4. Build the vector index (one time, ~10–30 min)
+# 5. Build the vector index (one time, ~10–30 min)
 python scripts/build_index.py
 
-# 5. Run
+# 6. Run
 python app.py
 # Open http://localhost:7860
 ```
 
+**Development (hot reload):**
+
+```bash
+# Terminal 1 — API server
+python app.py
+
+# Terminal 2 — React dev server (proxies /api to :7860)
+cd frontend && npm run dev
+# Open http://localhost:5173
+```
+
 ---
-
-## Deployment
-
-### HuggingFace Spaces (Recommended)
-
-```bash
-pip install huggingface_hub
-huggingface-cli login
-
-# Create a new Space at huggingface.co (SDK: Gradio, Python: 3.11)
-git clone https://huggingface.co/spaces/YOUR_USERNAME/finance-rag
-cp -r /path/to/finance-rag/* huggingface-repo/
-
-# Track large files
-git lfs install
-git lfs track "data/vector_store/*"
-
-git add . && git commit -m "deploy" && git push
-```
-
-HuggingFace Spaces automatically installs `requirements.txt` and runs `app.py`.
-
-### Docker
-
-```bash
-docker build -t finance-rag .
-docker run -p 7860:7860 \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/models:/app/models \
-  finance-rag
-```
 
 ---
 
@@ -243,7 +240,7 @@ Results are saved to `results/eval_MODE_RETRIEVAL_TIMESTAMP.json`.
 | `ModuleNotFoundError: faiss` | `pip install faiss-cpu` |
 | LLM model not found | `python scripts/download_model.py` |
 | Vector store not found | `python scripts/build_index.py` |
-| Metal / MPS out of memory | Set `gpu_layers=0` in `src/agents/llm.py` |
+| Metal / MPS out of memory | Set `n_gpu_layers=0` in `src/agents/llm.py` |
 | PDF pages return no text | PDF is a scanned image — OCR not supported in this version |
 
 ---

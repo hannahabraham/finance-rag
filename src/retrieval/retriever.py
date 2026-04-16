@@ -140,7 +140,9 @@ def hybrid_retrieve(
     Combine dense and BM25 results using Reciprocal Rank Fusion (RRF).
 
     RRF is simple and robust: each result gets a score of 1/(rank + k) from both
-    lists; scores are summed; the highest combined score wins.
+    lists; scores are summed; the highest combined score wins. We apply per-list
+    weights (dense_weight, bm25_weight) as multipliers on the reciprocal rank —
+    a common variant of vanilla RRF, not the original formulation.
     This avoids raw score normalisation issues between different retrieval methods.
 
     Args:

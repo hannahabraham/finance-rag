@@ -86,6 +86,11 @@ def chunk_pages(
     chunk_size = chunk_size or settings.CHUNK_SIZE
     chunk_overlap = chunk_overlap or settings.CHUNK_OVERLAP
 
+    if chunk_overlap >= chunk_size:
+        raise ValueError(
+            f"chunk_overlap ({chunk_overlap}) must be smaller than chunk_size ({chunk_size})"
+        )
+
     if strategy == "page":
         return _chunk_by_page(pages)
     elif strategy == "fixed":
